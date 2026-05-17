@@ -10,7 +10,7 @@ RUN npm run build -- --configuration=production
 FROM nginxinc/nginx-unprivileged:1.27-alpine AS runtime
 
 # Copiar el output estático de Angular al directorio de Nginx
-COPY --from=builder --chown=nginx:nginx /app/dist/casino-frontend /usr/share/nginx/html/
+COPY --from=builder --chown=nginx:nginx /app/dist/casino-frontend /browser/usr/share/nginx/html/
 
 # Copiar el archivo nginx.conf a la carpeta de plantillas (Exigencia para envsubst)
 COPY --chown=nginx:nginx nginx.conf /etc/nginx/templates/default.conf.template
