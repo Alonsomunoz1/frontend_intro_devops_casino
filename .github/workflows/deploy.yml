@@ -1,0 +1,82 @@
+# ============================================================
+# CI/CD  casino-frontend :  build Angular -> TEST -> imagen nginx -> ECR -> EKS
+# Se dispara con push a la rama "deploy".
+# NUEVO (EFT): job "test" (Angular headless) que BLOQUEA el deploy si falla.
+# ============================================================
+name: deploy-casino-frontend
+
+on:
+  push:
+    branches: [ deploy ]
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
+  EKS_CLUSTER: ${{ secrets.EKS_CLUSTER }}
+
+jobs:
+  # ----------------------------------------------------------
+  # JOB 1 (NUEVO): pruebas Angular en modo CI (headless).
+  # ----------------------------------------------------------
+  test:
+    name: Pruebas unitarias (frontend Angular)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Ejecutar pruebas (headless, sin watch)
+        run: npm test -- --watch=false --browsers=ChromeHeadless
+
+  # ----------------------------------------------------------
+  # JOB 2: build + push + deploy. Solo corre si "test" pasó.
+  # ----------------------------------------------------------
+  build-push-deploy:
+    needs: test          # <-- ESTA LÍNEA bloquea el deploy si el test falla
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configurar credenciales AWS (temporales, AWS Academy)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login en Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag y push (3 tags simultáneos)
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version" 2>/dev/null || echo "1.0.0")
+          IMG="$REGISTRY/$ECR_REPOSITORY"
+          docker build -t "$IMG:$IMAGE_TAG" -t "$IMG:latest" -t "$IMG:v$VERSION" .
+          docker push "$IMG:$IMAGE_TAG"
+          docker push "$IMG:latest"
+          docker push "$IMG:v$VERSION"
+          echo "IMG=$IMG" >> $GITHUB_ENV
+
+      - name: Configurar kubeconfig para EKS
+        run: aws eks update-kubeconfig --name "$EKS_CLUSTER" --region "$AWS_REGION"
+
+      - name: Desplegar en EKS
+        run: |
+          kubectl set image deployment/casino-frontend \
+            casino-frontend=$IMG:${{ github.sha }} --record
+          kubectl rollout status deployment/casino-frontend --timeout=180s

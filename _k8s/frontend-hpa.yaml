@@ -1,0 +1,22 @@
+# ============================================================
+# casino-frontend  -  HPA por CPU (el frontend recibe la carga pública)
+# Requiere metrics-server. Umbral 50%, 2 -> 6 réplicas.
+# ============================================================
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: casino-frontend
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: casino-frontend
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50

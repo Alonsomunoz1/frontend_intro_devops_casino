@@ -1,0 +1,56 @@
+# ============================================================
+# casino-frontend  -  Deployment + Service tipo LoadBalancer (público)
+# Único servicio expuesto a Internet. nginx (8080) enruta /api/* internamente.
+# ============================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: casino-frontend
+  labels:
+    app: casino-frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: casino-frontend
+  template:
+    metadata:
+      labels:
+        app: casino-frontend
+    spec:
+      containers:
+        - name: casino-frontend
+          image: <ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/casino-frontend:latest
+          ports:
+            - containerPort: 8080
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "64Mi"
+            limits:
+              cpu: "300m"
+              memory: "128Mi"
+          # nginx sirve el SPA: liveness/readiness simples sobre la raíz
+          readinessProbe:
+            httpGet: { path: /, port: 8080 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /, port: 8080 }
+            initialDelaySeconds: 10
+            periodSeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: casino-frontend
+  labels:
+    app: casino-frontend
+spec:
+  type: LoadBalancer        # <-- expone una URL pública (ELB) en AWS
+  selector:
+    app: casino-frontend
+  ports:
+    - port: 80
+      targetPort: 8080
+      protocol: TCP

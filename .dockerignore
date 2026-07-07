@@ -1,0 +1,15 @@
+node_modules
+dist
+.angular
+*.log
+.git
+.gitignore
+.env
+.env.*
+.DS_Store
+.claude/
+.superpowers/
+CLAUDE.md
+docs/
+_k8s/
+.github/
